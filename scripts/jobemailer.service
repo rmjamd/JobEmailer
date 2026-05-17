@@ -1,0 +1,14 @@
+[Unit]
+Description=JobEmailer Telegram polling bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/ramij/Desktop/JobEmailer
+ExecStart=/home/ramij/Desktop/JobEmailer/scripts/run-polling.sh
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target

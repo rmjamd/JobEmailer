@@ -1,0 +1,9 @@
+.env
+application-local.properties
+
+target/
+.idea/
+
+telegram_state.json
+bot_history.jsonl
+sent_email_history.json
