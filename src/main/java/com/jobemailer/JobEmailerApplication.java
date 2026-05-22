@@ -9,7 +9,7 @@ import org.springframework.context.annotation.Bean;
 
 @SpringBootApplication
 @EnableConfigurationProperties(JobEmailerProperties.class)
-public class   JobEmailerApplication {
+   public class   JobEmailerApplication {
     public static void main(String[] args) {
         SpringApplication.run(JobEmailerApplication.class, args);
     }

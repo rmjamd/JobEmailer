@@ -33,6 +33,7 @@ public class JobEmailerService {
     private final LinkedInExtractor linkedInExtractor;
     private final GeminiClient geminiClient;
     private final EmailSender emailSender;
+    private final LinkedInDmNotifier linkedInDmNotifier;
     private final JsonFileStore jsonFileStore;
     private final ObjectMapper objectMapper;
 
@@ -42,6 +43,7 @@ public class JobEmailerService {
             LinkedInExtractor linkedInExtractor,
             GeminiClient geminiClient,
             EmailSender emailSender,
+            LinkedInDmNotifier linkedInDmNotifier,
             JsonFileStore jsonFileStore,
             ObjectMapper objectMapper
     ) {
@@ -50,6 +52,7 @@ public class JobEmailerService {
         this.linkedInExtractor = linkedInExtractor;
         this.geminiClient = geminiClient;
         this.emailSender = emailSender;
+        this.linkedInDmNotifier = linkedInDmNotifier;
         this.jsonFileStore = jsonFileStore;
         this.objectMapper = objectMapper;
     }
@@ -59,7 +62,7 @@ public class JobEmailerService {
         require(Path.of(properties.getResumePath()), "Resume file");
 
         if (properties.getRunOnceUrl() != null && !properties.getRunOnceUrl().isBlank()) {
-            ProcessResult result = processUrl(properties.getRunOnceUrl());
+            ProcessResult result = processUrl(properties.getRunOnceUrl(), 0L);
             System.out.println(objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(result));
             return;
         }
@@ -114,7 +117,7 @@ public class JobEmailerService {
         }
         telegramClient.sendMessage(chatId, "Processing the LinkedIn post. This can take a few seconds.");
         try {
-            ProcessResult result = processUrl(url);
+            ProcessResult result = processUrl(url, chatId);
             telegramClient.sendMessage(chatId, formatSummary(result));
         } catch (Exception e) {
             telegramClient.sendMessage(chatId, "Processing failed: " + e.getMessage());
@@ -122,12 +125,16 @@ public class JobEmailerService {
     }
 
     public ProcessResult processUrl(String url) throws Exception {
+        return processUrl(url, 0L);
+    }
+
+    public ProcessResult processUrl(String url, long replyChatId) throws Exception {
         String candidateContext = Files.readString(Path.of(properties.getCandidateContextFile()), StandardCharsets.UTF_8);
         PostData post = linkedInExtractor.extract(url);
         List<String> extractedEmails = extractEmails(post.getContent());
         String actualExtractedEmail = extractedEmails.isEmpty() ? "" : extractedEmails.get(0);
         if (actualExtractedEmail.isEmpty()) {
-            throw new IllegalStateException("No email address could be extracted from the LinkedIn post content.");
+            return processUrlWithoutEmail(url, post, candidateContext, extractedEmails, replyChatId);
         }
 
         String targetEmail = properties.isTestMode() ? properties.getTestRecipientOverride() : actualExtractedEmail;
@@ -180,7 +187,87 @@ public class JobEmailerService {
         return result;
     }
 
+    private ProcessResult processUrlWithoutEmail(
+            String url,
+            PostData post,
+            String candidateContext,
+            List<String> extractedEmails,
+            long replyChatId
+    ) throws Exception {
+        String pseudoRecipient = buildPseudoRecipientForDraft(post);
+        EmailDraft emailDraft = geminiClient.generateDraft(post, pseudoRecipient, candidateContext);
+
+        boolean linkedinDmSent = false;
+        String linkedinDmChannel = "";
+        String channelError = null;
+        try {
+            linkedInDmNotifier.sendEmailDraft(post, emailDraft);
+            linkedinDmSent = true;
+            linkedinDmChannel = linkedInDmNotifier.resolvedChannelLabel();
+        } catch (Exception e) {
+            channelError = e.getMessage();
+            if (replyChatId != 0) {
+                String draftMessage = LinkedInDmNotifier.formatTelegramMessage(post, emailDraft)
+                        + "\n\n⚠️ LinkedinDm channel failed: " + channelError
+                        + "\n(Add @LinkedinDmBot as admin to your LinkedinDm channel to fix.)";
+                telegramClient.sendMessage(replyChatId, draftMessage);
+                linkedinDmChannel = "this chat (LinkedinDm unavailable)";
+            } else {
+                throw e;
+            }
+        }
+
+        ProcessResult result = new ProcessResult();
+        result.setLinkedinUrl(url);
+        result.setPost(post);
+        result.setExtractedPostEmails(extractedEmails);
+        result.setActualExtractedEmail("");
+        result.setTargetEmail("");
+        result.setDraft(emailDraft);
+        result.setEmailSent(false);
+        result.setCooldownSkipped(false);
+        result.setCooldownRemainingDays(0);
+        result.setTestMode(properties.isTestMode());
+        result.setDefaultEmail(properties.getTestRecipientOverride());
+        result.setLinkedinDmMode(true);
+        result.setLinkedinDmSent(linkedinDmSent);
+        result.setLinkedinDmChannel(linkedinDmChannel);
+
+        Map<String, Object> historyEntry = new HashMap<>();
+        historyEntry.put("timestamp", Instant.now().getEpochSecond());
+        historyEntry.put("linkedin_url", url);
+        historyEntry.put("actual_extracted_email", "");
+        historyEntry.put("linkedin_dm_mode", true);
+        historyEntry.put("linkedin_dm_sent", linkedinDmSent);
+        historyEntry.put("linkedin_dm_channel", linkedinDmChannel);
+        if (channelError != null) {
+            historyEntry.put("linkedin_dm_error", channelError);
+        }
+        historyEntry.put("draft_subject", emailDraft.getSubject());
+        historyEntry.put("draft_body_preview", truncate(emailDraft.getBody(), 200));
+        historyEntry.put("gemini_model", emailDraft.getGeminiModel());
+        historyEntry.put("gemini_key_index", emailDraft.getGeminiKeyIndex());
+        jsonFileStore.appendJsonLine(properties.getBotHistoryFile(), historyEntry);
+
+        return result;
+    }
+
+    private static String buildPseudoRecipientForDraft(PostData post) {
+        String name = FallbackEmailGenerator.inferRecruiterNameFromPost(post).toLowerCase();
+        return name + "@linkedin.post";
+    }
+
+    private static String truncate(String value, int limit) {
+        if (value == null) {
+            return "";
+        }
+        return value.length() <= limit ? value : value.substring(0, limit);
+    }
+
     private String formatSummary(ProcessResult result) {
+        if (result.isLinkedinDmMode()) {
+            return formatLinkedInDmSummary(result);
+        }
         String mode;
         if (result.isEmailSent()) {
             mode = "sent";
@@ -209,6 +296,36 @@ public class JobEmailerService {
                 + "Subject: " + result.getDraft().getSubject() + "\n"
                 + "Post source: " + result.getPost().getSource() + "\n"
                 + generationStatus;
+    }
+
+    private String formatLinkedInDmSummary(ProcessResult result) {
+        String generationStatus;
+        if (result.getDraft().getGeminiModel() != null && !result.getDraft().getGeminiModel().isBlank()) {
+            generationStatus = "Draft generated by Gemini using " + result.getDraft().getGeminiModel();
+            if (result.getDraft().getGeminiKeyIndex() != null) {
+                generationStatus += " (key " + result.getDraft().getGeminiKeyIndex() + ")";
+            }
+        } else {
+            generationStatus = "Draft generated by fallback logic";
+        }
+
+        String delivery;
+        if (result.isLinkedinDmSent()) {
+            delivery = "Draft sent to LinkedinDm channel: " + result.getLinkedinDmChannel();
+        } else if (result.getLinkedinDmChannel() != null && result.getLinkedinDmChannel().startsWith("this chat")) {
+            delivery = "LinkedinDm channel failed — full draft sent here instead";
+        } else {
+            delivery = "Failed to send draft to LinkedinDm channel";
+        }
+
+        return "No email found in LinkedIn post.\n"
+                + delivery + "\n"
+                + "Post author: " + (result.getPost().getAuthor() == null ? "" : result.getPost().getAuthor()) + "\n"
+                + "Post URL: " + result.getLinkedinUrl() + "\n"
+                + "Subject: " + result.getDraft().getSubject() + "\n"
+                + generationStatus + "\n\n"
+                + "Draft preview:\n"
+                + result.getDraft().getBody();
     }
 
     private CooldownStatus cooldownStatus(String key) {

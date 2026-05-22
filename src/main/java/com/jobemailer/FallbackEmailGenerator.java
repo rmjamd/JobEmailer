@@ -12,6 +12,37 @@ public final class FallbackEmailGenerator {
     private FallbackEmailGenerator() {
     }
 
+    public static EmailDraft generateLinkedInDm(PostData post, JobEmailerProperties properties) {
+        EmailDraft draft = new EmailDraft();
+        String recipientName = inferRecruiterNameFromPost(post);
+        String requirementHighlights = buildRequirementHighlights(post);
+        String body = "Hi " + recipientName + ",\n\n"
+                + buildRelevanceSentence(post) + " "
+                + "I have " + properties.getYearsOfExperience()
+                + " years of experience building scalable backend systems using Java, Spring Boot, Kafka, Redis, and cloud-native infrastructure."
+                + (requirementHighlights.isEmpty() ? "" : " " + requirementHighlights)
+                + " I would love to connect and share my resume if my profile looks relevant.\n\n"
+                + "Best regards,\n"
+                + "Ramij Amed Sardar";
+
+        draft.setRecipientName(recipientName);
+        draft.setSubject("");
+        draft.setBody(body);
+        draft.setPostSummary(post.getTitle() != null && !post.getTitle().isEmpty() ? post.getTitle() : truncate(post.getContent(), 180));
+        return draft;
+    }
+
+    public static String inferRecruiterNameFromPost(PostData post) {
+        String author = safe(post.getAuthor());
+        if (!author.isEmpty()) {
+            String[] parts = author.trim().split("\\s+");
+            if (parts.length > 0 && !parts[0].isEmpty()) {
+                return parts[0].substring(0, 1).toUpperCase(Locale.ROOT) + parts[0].substring(1).toLowerCase(Locale.ROOT);
+            }
+        }
+        return "there";
+    }
+
     public static EmailDraft generate(PostData post, String recipientEmail, JobEmailerProperties properties) {
         EmailDraft draft = new EmailDraft();
         String recipientName = inferNameFromEmail(recipientEmail);

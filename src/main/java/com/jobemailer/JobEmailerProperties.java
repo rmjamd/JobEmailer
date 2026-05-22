@@ -8,6 +8,10 @@ import java.util.List;
 @ConfigurationProperties(prefix = "jobemailer")
 public class JobEmailerProperties {
     private String telegramBotToken;
+    private String linkedinDmBotToken;
+    private String linkedinDmChatId;
+    private String linkedinDmChannel = "@LinkedinDm";
+    private boolean linkedinDmEnabled = true;
     private String geminiApiKey;
     private List<String> geminiApiKeys = new ArrayList<>();
     private List<String> geminiModels = new ArrayList<>();
@@ -30,6 +34,14 @@ public class JobEmailerProperties {
 
     public String getTelegramBotToken() { return telegramBotToken; }
     public void setTelegramBotToken(String telegramBotToken) { this.telegramBotToken = telegramBotToken; }
+    public String getLinkedinDmBotToken() { return linkedinDmBotToken; }
+    public void setLinkedinDmBotToken(String linkedinDmBotToken) { this.linkedinDmBotToken = linkedinDmBotToken; }
+    public String getLinkedinDmChatId() { return linkedinDmChatId; }
+    public void setLinkedinDmChatId(String linkedinDmChatId) { this.linkedinDmChatId = linkedinDmChatId; }
+    public String getLinkedinDmChannel() { return linkedinDmChannel; }
+    public void setLinkedinDmChannel(String linkedinDmChannel) { this.linkedinDmChannel = linkedinDmChannel; }
+    public boolean isLinkedinDmEnabled() { return linkedinDmEnabled; }
+    public void setLinkedinDmEnabled(boolean linkedinDmEnabled) { this.linkedinDmEnabled = linkedinDmEnabled; }
     public String getGeminiApiKey() { return geminiApiKey; }
     public void setGeminiApiKey(String geminiApiKey) { this.geminiApiKey = geminiApiKey; }
     public List<String> getGeminiApiKeys() { return geminiApiKeys; }

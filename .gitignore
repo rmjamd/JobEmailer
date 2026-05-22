@@ -5,5 +5,6 @@ target/
 .idea/
 
 telegram_state.json
+linkedin_dm_state.json
 bot_history.jsonl
 sent_email_history.json

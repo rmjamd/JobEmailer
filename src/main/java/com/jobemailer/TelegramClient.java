@@ -12,6 +12,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.List;
 
 @Component
 public class TelegramClient {
@@ -31,9 +32,13 @@ public class TelegramClient {
     }
 
     public JsonNode getUpdates(long offset) throws IOException, InterruptedException {
+        return getUpdates(properties.getTelegramBotToken(), offset);
+    }
+
+    public JsonNode getUpdates(String botToken, long offset) throws IOException, InterruptedException {
         String query = "offset=" + offset + "&timeout=30";
         HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(apiBase() + "/getUpdates?" + query))
+                .uri(URI.create(apiBase(botToken) + "/getUpdates?" + query))
                 .timeout(REQUEST_TIMEOUT)
                 .GET()
                 .build();
@@ -41,16 +46,45 @@ public class TelegramClient {
     }
 
     public void sendMessage(long chatId, String text) throws IOException, InterruptedException {
-        String body = "chat_id=" + chatId
-                + "&disable_web_page_preview=true"
-                + "&text=" + URLEncoder.encode(text, StandardCharsets.UTF_8);
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(apiBase() + "/sendMessage"))
-                .header("Content-Type", "application/x-www-form-urlencoded")
-                .timeout(REQUEST_TIMEOUT)
-                .POST(HttpRequest.BodyPublishers.ofString(body))
-                .build();
-        send(request);
+        sendMessage(properties.getTelegramBotToken(), String.valueOf(chatId), text);
+    }
+
+    public void sendMessage(String botToken, String chatId, String text) throws IOException, InterruptedException {
+        for (String chunk : splitTelegramMessage(text)) {
+            String body = "chat_id=" + URLEncoder.encode(chatId, StandardCharsets.UTF_8)
+                    + "&disable_web_page_preview=true"
+                    + "&text=" + URLEncoder.encode(chunk, StandardCharsets.UTF_8);
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(apiBase(botToken) + "/sendMessage"))
+                    .header("Content-Type", "application/x-www-form-urlencoded")
+                    .timeout(REQUEST_TIMEOUT)
+                    .POST(HttpRequest.BodyPublishers.ofString(body))
+                    .build();
+            send(request);
+        }
+    }
+
+    static List<String> splitTelegramMessage(String text) {
+        List<String> chunks = new java.util.ArrayList<>();
+        if (text == null || text.isEmpty()) {
+            chunks.add("");
+            return chunks;
+        }
+        final int limit = 4000;
+        int start = 0;
+        while (start < text.length()) {
+            int end = Math.min(start + limit, text.length());
+            if (end < text.length()) {
+                int breakAt = text.lastIndexOf('\n', end);
+                if (breakAt <= start) {
+                    breakAt = end;
+                }
+                end = breakAt;
+            }
+            chunks.add(text.substring(start, end));
+            start = end;
+        }
+        return chunks;
     }
 
     private JsonNode send(HttpRequest request) throws IOException, InterruptedException {
@@ -66,9 +100,13 @@ public class TelegramClient {
     }
 
     private String apiBase() {
-        if (properties.getTelegramBotToken() == null || properties.getTelegramBotToken().isEmpty()) {
-            throw new IllegalStateException("jobemailer.telegram-bot-token is required");
+        return apiBase(properties.getTelegramBotToken());
+    }
+
+    private static String apiBase(String botToken) {
+        if (botToken == null || botToken.isEmpty()) {
+            throw new IllegalStateException("Telegram bot token is required");
         }
-        return "https://api.telegram.org/bot" + properties.getTelegramBotToken();
+        return "https://api.telegram.org/bot" + botToken;
     }
 }

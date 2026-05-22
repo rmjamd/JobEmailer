@@ -26,6 +26,30 @@ public class GeminiClient {
         this.objectMapper = objectMapper;
     }
 
+    public EmailDraft generateLinkedInDm(PostData post, String candidateContext) {
+        List<String> failures = new ArrayList<>();
+        List<String> keys = geminiKeys();
+        List<String> models = properties.getGeminiModels();
+
+        for (int keyIndex = 0; keyIndex < keys.size(); keyIndex++) {
+            String apiKey = keys.get(keyIndex);
+            for (String model : models) {
+                try {
+                    EmailDraft draft = call(apiKey, model, buildLinkedInDmPrompt(post, candidateContext));
+                    draft.setGeminiModel(model);
+                    draft.setGeminiKeyIndex(keyIndex + 1);
+                    return draft;
+                } catch (Exception e) {
+                    failures.add("key" + (keyIndex + 1) + "/" + model + ": " + e.getMessage());
+                }
+            }
+        }
+
+        EmailDraft fallback = FallbackEmailGenerator.generateLinkedInDm(post, properties);
+        fallback.setFallbackReason(String.join("; ", failures));
+        return fallback;
+    }
+
     public EmailDraft generateDraft(PostData post, String recipientEmail, String candidateContext) {
         List<String> failures = new ArrayList<>();
         List<String> keys = geminiKeys();
@@ -90,6 +114,38 @@ public class GeminiClient {
         draft.setBody(parsed.path("body").asText(""));
         draft.setPostSummary(parsed.path("post_summary").asText(""));
         return draft;
+    }
+
+    private String buildLinkedInDmPrompt(PostData post, String candidateContext) throws IOException {
+        JsonNode signals = objectMapper.createObjectNode()
+                .put("tier1_requested", FallbackEmailGenerator.postRequiresTier1(post))
+                .put("strong_dsa_requested", FallbackEmailGenerator.postRequiresStrongDsa(post));
+
+        String recruiterName = FallbackEmailGenerator.inferRecruiterNameFromPost(post);
+
+        return "You are helping a candidate write a short LinkedIn direct message to a recruiter/hiring manager.\n\n"
+                + "Return only valid JSON with this exact schema:\n"
+                + "{\n"
+                + "  \"recipient_name\": \"string\",\n"
+                + "  \"subject\": \"\",\n"
+                + "  \"body\": \"string\",\n"
+                + "  \"post_summary\": \"string\"\n"
+                + "}\n\n"
+                + "Rules:\n"
+                + "- Write a warm, professional DM the candidate can copy-paste on LinkedIn.\n"
+                + "- Keep the body under 120 words.\n"
+                + "- Start with \"Hi {name},\" using the recruiter's first name when known.\n"
+                + "- Do not include email-style subject lines in the body.\n"
+                + "- Do not include the LinkedIn post URL in the body (it will be sent separately).\n"
+                + "- Mention relevant backend/Java/microservices experience from the candidate context.\n"
+                + "- End with a short sign-off: Best regards, Ramij Amed Sardar.\n"
+                + "- Do not invent unavailable facts.\n"
+                + "- Mention Jadavpur University only if the post explicitly values Tier-1/premier institute background.\n"
+                + "- Mention DSA/coding achievements only if the post explicitly asks for strong DSA/problem solving.\n"
+                + "- Suggested recruiter first name from post author: " + recruiterName + "\n\n"
+                + "Candidate context:\n" + candidateContext + "\n\n"
+                + "Requirement signals:\n" + objectMapper.writeValueAsString(signals) + "\n\n"
+                + "LinkedIn post JSON:\n" + objectMapper.writeValueAsString(post);
     }
 
     private String buildPrompt(PostData post, String recipientEmail, String candidateContext) throws IOException {

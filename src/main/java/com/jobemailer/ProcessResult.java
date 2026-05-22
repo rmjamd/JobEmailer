@@ -14,6 +14,9 @@ public class ProcessResult {
     private int cooldownRemainingDays;
     private boolean testMode;
     private String defaultEmail;
+    private boolean linkedinDmMode;
+    private boolean linkedinDmSent;
+    private String linkedinDmChannel;
 
     public String getLinkedinUrl() { return linkedinUrl; }
     public void setLinkedinUrl(String linkedinUrl) { this.linkedinUrl = linkedinUrl; }
@@ -37,4 +40,10 @@ public class ProcessResult {
     public void setTestMode(boolean testMode) { this.testMode = testMode; }
     public String getDefaultEmail() { return defaultEmail; }
     public void setDefaultEmail(String defaultEmail) { this.defaultEmail = defaultEmail; }
+    public boolean isLinkedinDmMode() { return linkedinDmMode; }
+    public void setLinkedinDmMode(boolean linkedinDmMode) { this.linkedinDmMode = linkedinDmMode; }
+    public boolean isLinkedinDmSent() { return linkedinDmSent; }
+    public void setLinkedinDmSent(boolean linkedinDmSent) { this.linkedinDmSent = linkedinDmSent; }
+    public String getLinkedinDmChannel() { return linkedinDmChannel; }
+    public void setLinkedinDmChannel(String linkedinDmChannel) { this.linkedinDmChannel = linkedinDmChannel; }
 }
