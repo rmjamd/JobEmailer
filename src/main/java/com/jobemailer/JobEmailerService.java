@@ -88,11 +88,15 @@ public class JobEmailerService {
                 }
                 for (JsonNode update : updates) {
                     long updateId = update.path("update_id").asLong();
-                    JsonNode message = update.path("message").isMissingNode() ? update.path("channel_post") : update.path("message");
-                    long chatId = message.path("chat").path("id").asLong();
-                    String text = message.path("text").asText(message.path("caption").asText(""));
-                    if (chatId != 0 && !text.isBlank()) {
-                        handleMessage(chatId, text);
+                    JsonNode message = update.path("message");
+                    if (!message.isMissingNode()) {
+                        long chatId = message.path("chat").path("id").asLong();
+                        String text = message.path("text").asText(message.path("caption").asText(""));
+                        // Ignore bot-authored traffic and all channel posts to avoid re-processing
+                        // the bot's own LinkedinDm fallback notifications as fresh LinkedIn jobs.
+                        if (chatId != 0 && !text.isBlank() && !message.path("from").path("is_bot").asBoolean(false)) {
+                            handleMessage(chatId, text);
+                        }
                     }
                     nextOffset = updateId + 1;
                     writeLastUpdateId(updateId);

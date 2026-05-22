@@ -122,6 +122,7 @@ public class GeminiClient {
                 .put("strong_dsa_requested", FallbackEmailGenerator.postRequiresStrongDsa(post));
 
         String recruiterName = FallbackEmailGenerator.inferRecruiterNameFromPost(post);
+        JsonNode sanitizedPost = sanitizedPostForPrompt(post);
 
         return "You are helping a candidate write a short LinkedIn direct message to a recruiter/hiring manager.\n\n"
                 + "Return only valid JSON with this exact schema:\n"
@@ -140,18 +141,22 @@ public class GeminiClient {
                 + "- Mention relevant backend/Java/microservices experience from the candidate context.\n"
                 + "- End with a short sign-off: Best regards, Ramij Amed Sardar.\n"
                 + "- Do not invent unavailable facts.\n"
+                + "- Never include hashtags anywhere in the body or post_summary.\n"
+                + "- Ignore LinkedIn hashtags when inferring the role, company, or location.\n"
+                + "- If company name is unknown, omit it instead of guessing.\n"
                 + "- Mention Jadavpur University only if the post explicitly values Tier-1/premier institute background.\n"
                 + "- Mention DSA/coding achievements only if the post explicitly asks for strong DSA/problem solving.\n"
                 + "- Suggested recruiter first name from post author: " + recruiterName + "\n\n"
                 + "Candidate context:\n" + candidateContext + "\n\n"
                 + "Requirement signals:\n" + objectMapper.writeValueAsString(signals) + "\n\n"
-                + "LinkedIn post JSON:\n" + objectMapper.writeValueAsString(post);
+                + "LinkedIn post JSON:\n" + objectMapper.writeValueAsString(sanitizedPost);
     }
 
     private String buildPrompt(PostData post, String recipientEmail, String candidateContext) throws IOException {
         JsonNode signals = objectMapper.createObjectNode()
                 .put("tier1_requested", FallbackEmailGenerator.postRequiresTier1(post))
                 .put("strong_dsa_requested", FallbackEmailGenerator.postRequiresStrongDsa(post));
+        JsonNode sanitizedPost = sanitizedPostForPrompt(post);
 
         return "You are helping a candidate create a concise, recruiter-friendly application email.\n\n"
                 + "Return only valid JSON with this exact schema:\n"
@@ -169,12 +174,28 @@ public class GeminiClient {
                 + "- If recruiter name is unknown, use \"there\".\n"
                 + "- In the email body, the post reference must contain only the LinkedIn URL.\n"
                 + "- Put the LinkedIn post reference at the very bottom of the email, after the signature.\n"
+                + "- Never include hashtags anywhere in the subject, body, or post_summary.\n"
+                + "- Ignore LinkedIn hashtags when inferring the role, company, or location.\n"
+                + "- If company name is unknown, omit it instead of guessing.\n"
+                + "- If the exact role is unclear, use a generic phrase like \"relevant backend opportunities\".\n"
                 + "- Mention Jadavpur University only if the post explicitly values Tier-1/top college/premier institute background.\n"
                 + "- Mention DSA/coding achievements only if the post explicitly asks for strong DSA/problem solving/coding strength.\n\n"
                 + "Candidate context:\n" + candidateContext + "\n\n"
                 + "Requirement signals:\n" + objectMapper.writeValueAsString(signals) + "\n\n"
-                + "LinkedIn post JSON:\n" + objectMapper.writeValueAsString(post) + "\n\n"
+                + "LinkedIn post JSON:\n" + objectMapper.writeValueAsString(sanitizedPost) + "\n\n"
                 + "Recipient email:\n" + recipientEmail;
+    }
+
+    private JsonNode sanitizedPostForPrompt(PostData post) {
+        return objectMapper.createObjectNode()
+                .put("url", post.getUrl())
+                .put("author", post.getAuthor())
+                .put("timestamp", post.getTimestamp())
+                .put("content", FallbackEmailGenerator.sanitizePostText(post.getContent()))
+                .put("reactions", post.getReactions())
+                .put("comments", post.getComments())
+                .put("title", FallbackEmailGenerator.sanitizePostText(post.getTitle()))
+                .put("source", post.getSource());
     }
 
     private List<String> geminiKeys() {

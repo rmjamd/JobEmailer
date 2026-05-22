@@ -44,15 +44,15 @@ public class LinkedInDmChatResolver {
             return cachedTarget;
         }
 
-        if (properties.getLinkedinDmChannel() != null && !properties.getLinkedinDmChannel().isBlank()) {
-            cachedTarget = properties.getLinkedinDmChannel().trim();
-            return cachedTarget;
-        }
-
         String discovered = discoverFromUpdates();
         if (discovered != null) {
             persistChatTarget(discovered);
             cachedTarget = discovered;
+            return cachedTarget;
+        }
+
+        if (properties.getLinkedinDmChannel() != null && !properties.getLinkedinDmChannel().isBlank()) {
+            cachedTarget = properties.getLinkedinDmChannel().trim();
             return cachedTarget;
         }
 

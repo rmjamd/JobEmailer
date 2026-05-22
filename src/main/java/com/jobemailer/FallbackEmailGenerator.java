@@ -8,6 +8,20 @@ import java.util.regex.Pattern;
 
 public final class FallbackEmailGenerator {
     private static final Pattern EMAIL_NAME_SPLIT = Pattern.compile("[._\\-]+");
+    private static final Pattern HASHTAG = Pattern.compile("(?i)(?<!\\S)#[\\p{L}0-9_]+");
+    private static final Pattern TITLE_PATTERN = Pattern.compile(
+            "(?i)\\b((?:senior|staff|lead|principal|junior|sr\\.?|jr\\.?|associate)?\\s*"
+                    + "(?:backend|back\\s*end|frontend|front\\s*end|full\\s*stack|software|java|platform|data|devops|"
+                    + "site reliability|sre|qa|test|mobile|android|ios|ml|ai|cloud|security|python|node(?:\\.js)?|golang|react|"
+                    + "spring(?:\\s*boot)?)?\\s*"
+                    + "(?:engineer|developer|architect|manager|intern|consultant|specialist|analyst))\\b");
+    private static final Pattern COMPANY_PATTERN = Pattern.compile(
+            "(?i)\\b(?:we(?:'re| are)? hiring(?: at)?|join|opportunity at|opening at|role at|position at)\\s+"
+                    + "([A-Z][A-Za-z0-9&.\\-]*(?:\\s+[A-Z][A-Za-z0-9&.\\-]*){0,4})\\b");
+    private static final Pattern COMPANY_IS_HIRING_PATTERN = Pattern.compile(
+            "\\b([A-Z][A-Za-z0-9&.\\-]*(?:\\s+[A-Z][A-Za-z0-9&.\\-]*){0,4})\\s+is hiring\\b");
+    private static final Pattern LOCATION_PATTERN = Pattern.compile(
+            "(?i)\\b(?:in|location|based in)\\s+([A-Z][a-z]+(?:\\s+[A-Z][a-z]+){0,2})\\b");
 
     private FallbackEmailGenerator() {
     }
@@ -113,33 +127,45 @@ public final class FallbackEmailGenerator {
     }
 
     private static String inferCompanyFromPost(PostData post) {
-        String content = safe(post.getContent());
+        String content = sanitizePostText(post.getContent());
         Matcher matcher = Pattern.compile("\\bwe at ([A-Z][A-Za-z0-9&.\\- ]+?) are hiring\\b", Pattern.CASE_INSENSITIVE).matcher(content);
-        if (matcher.find()) return normalizeSpace(matcher.group(1));
-        matcher = Pattern.compile("\\bjoin ([A-Z][A-Za-z0-9&.\\- ]+?)\\b", Pattern.CASE_INSENSITIVE).matcher(content);
-        if (matcher.find()) return normalizeSpace(matcher.group(1));
-        String title = safe(post.getTitle());
+        if (matcher.find()) return sanitizeCompanyCandidate(matcher.group(1));
+        matcher = COMPANY_PATTERN.matcher(content);
+        if (matcher.find()) return sanitizeCompanyCandidate(matcher.group(1));
+        matcher = COMPANY_IS_HIRING_PATTERN.matcher(content);
+        if (matcher.find()) return sanitizeCompanyCandidate(matcher.group(1));
+
+        String title = sanitizePostText(post.getTitle());
         if (title.contains("|")) {
-            return normalizeSpace(title.split("\\|", 2)[0]);
+            String company = sanitizeCompanyCandidate(title.split("\\|", 2)[0]);
+            if (!company.isEmpty()) {
+                return company;
+            }
         }
         return "";
     }
 
     private static String inferRoleFromPost(PostData post) {
-        for (String line : safe(post.getContent()).split("\\R")) {
-            String trimmed = line.trim();
-            if (trimmed.toLowerCase(Locale.ROOT).startsWith("hiring ")) {
-                return normalizeSpace(trimmed);
+        String text = sanitizePostText(post.getContent()) + "\n" + sanitizePostText(post.getTitle());
+        Matcher matcher = TITLE_PATTERN.matcher(text);
+        while (matcher.find()) {
+            String title = sanitizeRoleCandidate(matcher.group(1));
+            if (!title.isEmpty()) {
+                return title;
             }
         }
-        Matcher matcher = Pattern.compile("\\bhiring ([A-Za-z0-9 /,+\\-()]+)", Pattern.CASE_INSENSITIVE).matcher(safe(post.getContent()));
-        if (matcher.find()) return normalizeSpace(matcher.group(1));
         return "";
     }
 
     private static String inferLocationFromPost(PostData post) {
-        Matcher matcher = Pattern.compile("\\bin ([A-Z][A-Za-z]+(?: [A-Z][A-Za-z]+)*)\\b").matcher(safe(post.getContent()));
-        return matcher.find() ? normalizeSpace(matcher.group(1)) : "";
+        Matcher matcher = LOCATION_PATTERN.matcher(sanitizePostText(post.getContent()));
+        while (matcher.find()) {
+            String location = sanitizeLocationCandidate(matcher.group(1));
+            if (!location.isEmpty()) {
+                return location;
+            }
+        }
+        return "";
     }
 
     private static String inferNameFromEmail(String email) {
@@ -161,11 +187,66 @@ public final class FallbackEmailGenerator {
     }
 
     private static String combinedText(PostData post) {
-        return (safe(post.getContent()) + "\n" + safe(post.getTitle())).toLowerCase(Locale.ROOT);
+        return (sanitizePostText(post.getContent()) + "\n" + sanitizePostText(post.getTitle())).toLowerCase(Locale.ROOT);
     }
 
     private static String normalizeSpace(String value) {
         return safe(value).replaceAll("\\s+", " ").trim();
+    }
+
+    public static String sanitizePostText(String value) {
+        String text = safe(value)
+                .replace("\\n", "\n")
+                .replace("\\r", "\n")
+                .replace("\\t", " ");
+        text = HASHTAG.matcher(text).replaceAll(" ");
+        text = text.replaceAll("(?i)\\bon linkedin\\b", " ");
+        text = text.replace('|', ' ');
+        text = text.replaceAll("\\s+", " ").trim();
+        return text;
+    }
+
+    private static String sanitizeRoleCandidate(String value) {
+        String role = normalizeSpace(value)
+                .replaceAll("(?i)^hiring\\s+", "")
+                .replaceAll("[,;:]+$", "");
+        String lower = role.toLowerCase(Locale.ROOT);
+        if (role.isEmpty() || role.contains("#")) {
+            return "";
+        }
+        if (containsAny(lower, "alert", "opportunity", "opportunities", "opening", "openings", "hiring")) {
+            return "";
+        }
+        return role;
+    }
+
+    private static String sanitizeCompanyCandidate(String value) {
+        String company = normalizeSpace(value)
+                .replaceAll("[,;:]+$", "");
+        String lower = company.toLowerCase(Locale.ROOT);
+        if (company.isEmpty() || company.contains("#")) {
+            return "";
+        }
+        if (containsAny(lower, "hiring", "linkedin", "java", "spring", "kafka", "react", "microservices", "node")) {
+            return "";
+        }
+        if (company.split("\\s+").length > 5) {
+            return "";
+        }
+        return company;
+    }
+
+    private static String sanitizeLocationCandidate(String value) {
+        String location = normalizeSpace(value)
+                .replaceAll("[,;:]+$", "");
+        String lower = location.toLowerCase(Locale.ROOT);
+        if (location.isEmpty()) {
+            return "";
+        }
+        if (containsAny(lower, "java", "node", "node.js", "react", "spring", "kafka", "aws", "graphql", "microservices")) {
+            return "";
+        }
+        return location;
     }
 
     private static String truncate(String value, int limit) {
