@@ -36,6 +36,7 @@ public class JobEmailerService {
     private final LinkedInDmNotifier linkedInDmNotifier;
     private final JsonFileStore jsonFileStore;
     private final ObjectMapper objectMapper;
+    private final ResourcePathResolver resourcePathResolver;
 
     public JobEmailerService(
             JobEmailerProperties properties,
@@ -45,7 +46,8 @@ public class JobEmailerService {
             EmailSender emailSender,
             LinkedInDmNotifier linkedInDmNotifier,
             JsonFileStore jsonFileStore,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            ResourcePathResolver resourcePathResolver
     ) {
         this.properties = properties;
         this.telegramClient = telegramClient;
@@ -55,11 +57,12 @@ public class JobEmailerService {
         this.linkedInDmNotifier = linkedInDmNotifier;
         this.jsonFileStore = jsonFileStore;
         this.objectMapper = objectMapper;
+        this.resourcePathResolver = resourcePathResolver;
     }
 
     public void run() throws Exception {
         require(Path.of(properties.getCandidateContextFile()), "Candidate context file");
-        require(Path.of(properties.getResumePath()), "Resume file");
+        resourcePathResolver.requireExists(properties.getResumePath(), "Resume file");
 
         if (properties.getRunOnceUrl() != null && !properties.getRunOnceUrl().isBlank()) {
             ProcessResult result = processUrl(properties.getRunOnceUrl(), 0L);
@@ -156,7 +159,10 @@ public class JobEmailerService {
             if (cooldownStatus.active) {
                 cooldownSkipped = true;
             } else {
-                emailSender.sendEmail(targetEmail, draft.getSubject(), draft.getBody(), properties.getResumePath());
+                String resumeAttachmentPath = resourcePathResolver
+                        .materializeToPath(properties.getResumePath(), "Resume file")
+                        .toString();
+                emailSender.sendEmail(targetEmail, draft.getSubject(), draft.getBody(), resumeAttachmentPath);
                 recordSend(cooldownKey, actualExtractedEmail, targetEmail, url);
                 emailSent = true;
             }

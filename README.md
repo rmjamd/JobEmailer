@@ -23,6 +23,8 @@ cp .env.example .env
 
 Spring Boot loads `.env` automatically (`spring.config.import`). `.env` is gitignored.
 
+The default resume is bundled with the app at `src/main/resources/resume/Ramij-Amed-Sardar.pdf` and referenced via `jobemailer.resume-path=classpath:resume/Ramij-Amed-Sardar.pdf`.
+
 You can also override any property with environment variables (e.g. `JOBEEMAILER_SMTP_PASSWORD`) or CLI args (`--jobemailer.smtp-password=...`).
 
 Important settings:
