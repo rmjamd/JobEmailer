@@ -9,6 +9,7 @@ Spring Boot version of the Telegram -> LinkedIn -> Gemini -> Email workflow.
 - Generates email drafts with Gemini, with model rotation and API-key failover
 - Supports test mode vs actual sending
 - Tracks sent emails and skips re-sending within 7 days
+- Can use either Telegram polling or a local browser chat UI over WebSocket
 
 ## Configure
 
@@ -23,14 +24,14 @@ cp .env.example .env
 
 Spring Boot loads `.env` automatically (`spring.config.import`). `.env` is gitignored.
 
-The default resume is bundled with the app at `src/main/resources/resume/Ramij-Amed-Sardar.pdf` and referenced via `jobemailer.resume-path=classpath:resume/Ramij-Amed-Sardar.pdf`.
-
 You can also override any property with environment variables (e.g. `JOBEEMAILER_SMTP_PASSWORD`) or CLI args (`--jobemailer.smtp-password=...`).
 
 Important settings:
 - `jobemailer.auto-send-email=true`
 - `jobemailer.test-mode=true` for safe testing
 - `jobemailer.test-mode=false` for actual sending
+- `jobemailer.input-provider=custom-ui` for the local chat UI
+- `jobemailer.input-provider=telegram` for Telegram polling
 - `jobemailer.run-once-url=` to process one LinkedIn post and exit
 
 ## Run Once
@@ -42,6 +43,15 @@ mvn spring-boot:run -Dspring-boot.run.arguments="--jobemailer.run-once-url=https
 ```bash
 mvn spring-boot:run
 ```
+
+## Run Custom Chat UI
+Set `jobemailer.input-provider=custom-ui`, then run:
+
+```bash
+mvn spring-boot:run
+```
+
+Open `http://localhost:8080/` and paste a LinkedIn post URL. The page sends the URL to the app through a WebSocket connection at `/chat`.
 
 ## Tracking Files
 - `telegram_state.json`

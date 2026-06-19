@@ -20,12 +20,12 @@ import java.util.regex.Pattern;
 @Service
 public class JobEmailerService {
     private static final Pattern EMAIL_PATTERN = Pattern.compile(
-            "(?<![A-Z0-9._%+-@])([A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,})(?![A-Z0-9._%+-@])",
+            "(?<![A-Z0-9._%+@-])([A-Z0-9._%+-]+@(?:[A-Z0-9-]+\\.)+[A-Z]{2,})(?![A-Z0-9_%+@-])",
             Pattern.CASE_INSENSITIVE);
     private static final Pattern CONTEXTUAL_EMAIL_PATTERN = Pattern.compile(
             "(?:share\\s+(?:your\\s+)?(?:updated\\s+)?resume|send\\s+(?:your\\s+)?resume|updated\\s+resume|"
                     + "interested\\s+candidates|apply|reach\\s+out|contact|email|mailto|cv)\\s*(?:at|to|on)?\\s*:?\\s*"
-                    + "([A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,})",
+                    + "(?:the\\s+)?([A-Z0-9._%+-]+@(?:[A-Z0-9-]+\\.)+[A-Z]{2,})",
             Pattern.CASE_INSENSITIVE);
 
     private final JobEmailerProperties properties;
@@ -61,15 +61,19 @@ public class JobEmailerService {
     }
 
     public void run() throws Exception {
-        require(Path.of(properties.getCandidateContextFile()), "Candidate context file");
-        resourcePathResolver.requireExists(properties.getResumePath(), "Resume file");
-
         if (properties.getRunOnceUrl() != null && !properties.getRunOnceUrl().isBlank()) {
+            requireRuntimeFiles();
             ProcessResult result = processUrl(properties.getRunOnceUrl(), 0L);
             System.out.println(objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(result));
             return;
         }
 
+        if (isCustomUiMode()) {
+            System.out.println("[JobEmailer] Custom chat UI mode enabled. Open http://localhost:8080/");
+            return;
+        }
+
+        requireRuntimeFiles();
         if (properties.getTelegramBotToken() == null || properties.getTelegramBotToken().isBlank()) {
             throw new IllegalStateException("jobemailer.telegram-bot-token is required for polling mode");
         }
@@ -117,17 +121,25 @@ public class JobEmailerService {
     }
 
     private void handleMessage(long chatId, String text) throws IOException, InterruptedException {
+        handleChatMessage(text, chatId, message -> telegramClient.sendMessage(chatId, message));
+    }
+
+    public void handleCustomUiMessage(String text, ChatResponder responder) throws IOException, InterruptedException {
+        handleChatMessage(text, 0L, responder);
+    }
+
+    private void handleChatMessage(String text, long replyChatId, ChatResponder responder) throws IOException, InterruptedException {
         String url = extractLinkedInUrl(text);
         if (url.isEmpty()) {
-            telegramClient.sendMessage(chatId, "Send a LinkedIn post URL. I will scrape it, draft an email, and optionally send it.");
+            responder.send("Send a LinkedIn post URL. I will scrape it, draft an email, and optionally send it.");
             return;
         }
-        telegramClient.sendMessage(chatId, "Processing the LinkedIn post. This can take a few seconds.");
+        responder.send("Processing the LinkedIn post. This can take a few seconds.");
         try {
-            ProcessResult result = processUrl(url, chatId);
-            telegramClient.sendMessage(chatId, formatSummary(result));
+            ProcessResult result = processUrl(url, replyChatId);
+            responder.send(formatSummary(result));
         } catch (Exception e) {
-            telegramClient.sendMessage(chatId, "Processing failed: " + e.getMessage());
+            responder.send("Processing failed: " + e.getMessage());
         }
     }
 
@@ -222,6 +234,8 @@ public class JobEmailerService {
                         + "\n(Add @LinkedinDmBot as admin to your LinkedinDm channel to fix.)";
                 telegramClient.sendMessage(replyChatId, draftMessage);
                 linkedinDmChannel = "this chat (LinkedinDm unavailable)";
+            } else if (isCustomUiMode()) {
+                linkedinDmChannel = "custom UI (LinkedinDm unavailable: " + channelError + ")";
             } else {
                 throw e;
             }
@@ -437,6 +451,21 @@ public class JobEmailerService {
         if (!Files.exists(path)) {
             throw new IllegalStateException(label + " not found: " + path);
         }
+    }
+
+    private void requireRuntimeFiles() {
+        require(Path.of(properties.getCandidateContextFile()), "Candidate context file");
+        resourcePathResolver.requireExists(properties.getResumePath(), "Resume file");
+    }
+
+    private boolean isCustomUiMode() {
+        return "custom-ui".equalsIgnoreCase(properties.getInputProvider())
+                || "custom".equalsIgnoreCase(properties.getInputProvider());
+    }
+
+    @FunctionalInterface
+    public interface ChatResponder {
+        void send(String message) throws IOException, InterruptedException;
     }
 
     private static final class CooldownStatus {

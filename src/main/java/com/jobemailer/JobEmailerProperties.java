@@ -31,6 +31,7 @@ public class JobEmailerProperties {
     private int pollIntervalSeconds = 2;
     private String yearsOfExperience = "5";
     private String runOnceUrl;
+    private String inputProvider = "telegram";
 
     public String getTelegramBotToken() { return telegramBotToken; }
     public void setTelegramBotToken(String telegramBotToken) { this.telegramBotToken = telegramBotToken; }
@@ -80,4 +81,6 @@ public class JobEmailerProperties {
     public void setYearsOfExperience(String yearsOfExperience) { this.yearsOfExperience = yearsOfExperience; }
     public String getRunOnceUrl() { return runOnceUrl; }
     public void setRunOnceUrl(String runOnceUrl) { this.runOnceUrl = runOnceUrl; }
+    public String getInputProvider() { return inputProvider; }
+    public void setInputProvider(String inputProvider) { this.inputProvider = inputProvider; }
 }
