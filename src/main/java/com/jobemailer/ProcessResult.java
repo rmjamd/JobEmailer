@@ -3,9 +3,32 @@ package com.jobemailer;
 import java.util.List;
 
 public class ProcessResult {
+    public static class EmailDelivery {
+        private String actualExtractedEmail;
+        private String targetEmail;
+        private EmailDraft draft;
+        private boolean emailSent;
+        private boolean cooldownSkipped;
+        private int cooldownRemainingDays;
+
+        public String getActualExtractedEmail() { return actualExtractedEmail; }
+        public void setActualExtractedEmail(String actualExtractedEmail) { this.actualExtractedEmail = actualExtractedEmail; }
+        public String getTargetEmail() { return targetEmail; }
+        public void setTargetEmail(String targetEmail) { this.targetEmail = targetEmail; }
+        public EmailDraft getDraft() { return draft; }
+        public void setDraft(EmailDraft draft) { this.draft = draft; }
+        public boolean isEmailSent() { return emailSent; }
+        public void setEmailSent(boolean emailSent) { this.emailSent = emailSent; }
+        public boolean isCooldownSkipped() { return cooldownSkipped; }
+        public void setCooldownSkipped(boolean cooldownSkipped) { this.cooldownSkipped = cooldownSkipped; }
+        public int getCooldownRemainingDays() { return cooldownRemainingDays; }
+        public void setCooldownRemainingDays(int cooldownRemainingDays) { this.cooldownRemainingDays = cooldownRemainingDays; }
+    }
+
     private String linkedinUrl;
     private PostData post;
     private List<String> extractedPostEmails;
+    private List<EmailDelivery> emailDeliveries;
     private String actualExtractedEmail;
     private String targetEmail;
     private EmailDraft draft;
@@ -24,6 +47,8 @@ public class ProcessResult {
     public void setPost(PostData post) { this.post = post; }
     public List<String> getExtractedPostEmails() { return extractedPostEmails; }
     public void setExtractedPostEmails(List<String> extractedPostEmails) { this.extractedPostEmails = extractedPostEmails; }
+    public List<EmailDelivery> getEmailDeliveries() { return emailDeliveries; }
+    public void setEmailDeliveries(List<EmailDelivery> emailDeliveries) { this.emailDeliveries = emailDeliveries; }
     public String getActualExtractedEmail() { return actualExtractedEmail; }
     public void setActualExtractedEmail(String actualExtractedEmail) { this.actualExtractedEmail = actualExtractedEmail; }
     public String getTargetEmail() { return targetEmail; }

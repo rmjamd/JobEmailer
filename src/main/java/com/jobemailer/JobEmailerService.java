@@ -151,17 +151,67 @@ public class JobEmailerService {
         String candidateContext = Files.readString(Path.of(properties.getCandidateContextFile()), StandardCharsets.UTF_8);
         PostData post = linkedInExtractor.extract(url);
         List<String> extractedEmails = extractEmails(post.getContent());
-        String actualExtractedEmail = extractedEmails.isEmpty() ? "" : extractedEmails.get(0);
-        if (actualExtractedEmail.isEmpty()) {
+        if (extractedEmails.isEmpty()) {
             return processUrlWithoutEmail(url, post, candidateContext, extractedEmails, replyChatId);
         }
 
+        List<ProcessResult.EmailDelivery> deliveries = new ArrayList<>();
+        for (String actualExtractedEmail : extractedEmails) {
+            ProcessResult.EmailDelivery delivery = processEmailDelivery(url, post, candidateContext, actualExtractedEmail);
+            deliveries.add(delivery);
+        }
+
+        ProcessResult.EmailDelivery firstDelivery = deliveries.get(0);
+
+        ProcessResult result = new ProcessResult();
+        result.setLinkedinUrl(url);
+        result.setPost(post);
+        result.setExtractedPostEmails(extractedEmails);
+        result.setEmailDeliveries(deliveries);
+        result.setActualExtractedEmail(firstDelivery.getActualExtractedEmail());
+        result.setTargetEmail(firstDelivery.getTargetEmail());
+        result.setDraft(firstDelivery.getDraft());
+        result.setEmailSent(deliveries.stream().anyMatch(ProcessResult.EmailDelivery::isEmailSent));
+        result.setCooldownSkipped(deliveries.stream().anyMatch(ProcessResult.EmailDelivery::isCooldownSkipped));
+        result.setCooldownRemainingDays(deliveries.stream()
+                .mapToInt(ProcessResult.EmailDelivery::getCooldownRemainingDays)
+                .max()
+                .orElse(0));
+        result.setTestMode(properties.isTestMode());
+        result.setDefaultEmail(properties.getTestRecipientOverride());
+
+        Map<String, Object> historyEntry = new HashMap<>();
+        historyEntry.put("timestamp", Instant.now().getEpochSecond());
+        historyEntry.put("linkedin_url", result.getLinkedinUrl());
+        historyEntry.put("actual_extracted_email", result.getActualExtractedEmail());
+        historyEntry.put("actual_extracted_emails", extractedEmails);
+        historyEntry.put("target_email", result.getTargetEmail());
+        historyEntry.put("email_deliveries", deliveries);
+        historyEntry.put("email_sent", result.isEmailSent());
+        historyEntry.put("cooldown_skipped", result.isCooldownSkipped());
+        historyEntry.put("test_mode", result.isTestMode());
+        historyEntry.put("draft_subject", firstDelivery.getDraft().getSubject());
+        historyEntry.put("gemini_model", firstDelivery.getDraft().getGeminiModel());
+        historyEntry.put("gemini_key_index", firstDelivery.getDraft().getGeminiKeyIndex());
+        jsonFileStore.appendJsonLine(properties.getBotHistoryFile(), historyEntry);
+
+        return result;
+    }
+
+    private ProcessResult.EmailDelivery processEmailDelivery(
+            String url,
+            PostData post,
+            String candidateContext,
+            String actualExtractedEmail
+    ) throws Exception {
         String targetEmail = properties.isTestMode() ? properties.getTestRecipientOverride() : actualExtractedEmail;
         if (targetEmail == null || targetEmail.isBlank()) {
             throw new IllegalStateException("No target email is configured for sending.");
         }
 
-        String cooldownKey = properties.isTestMode() ? "test::" + targetEmail.toLowerCase() : actualExtractedEmail.toLowerCase();
+        String cooldownKey = properties.isTestMode()
+                ? "test::" + actualExtractedEmail.toLowerCase() + "::" + targetEmail.toLowerCase()
+                : actualExtractedEmail.toLowerCase();
         CooldownStatus cooldownStatus = cooldownStatus(cooldownKey);
         EmailDraft draft = geminiClient.generateDraft(post, targetEmail, candidateContext);
 
@@ -180,33 +230,14 @@ public class JobEmailerService {
             }
         }
 
-        ProcessResult result = new ProcessResult();
-        result.setLinkedinUrl(url);
-        result.setPost(post);
-        result.setExtractedPostEmails(extractedEmails);
-        result.setActualExtractedEmail(actualExtractedEmail);
-        result.setTargetEmail(targetEmail);
-        result.setDraft(draft);
-        result.setEmailSent(emailSent);
-        result.setCooldownSkipped(cooldownSkipped);
-        result.setCooldownRemainingDays(cooldownStatus.remainingDays);
-        result.setTestMode(properties.isTestMode());
-        result.setDefaultEmail(properties.getTestRecipientOverride());
-
-        Map<String, Object> historyEntry = new HashMap<>();
-        historyEntry.put("timestamp", Instant.now().getEpochSecond());
-        historyEntry.put("linkedin_url", result.getLinkedinUrl());
-        historyEntry.put("actual_extracted_email", result.getActualExtractedEmail());
-        historyEntry.put("target_email", result.getTargetEmail());
-        historyEntry.put("email_sent", result.isEmailSent());
-        historyEntry.put("cooldown_skipped", result.isCooldownSkipped());
-        historyEntry.put("test_mode", result.isTestMode());
-        historyEntry.put("draft_subject", draft.getSubject());
-        historyEntry.put("gemini_model", draft.getGeminiModel());
-        historyEntry.put("gemini_key_index", draft.getGeminiKeyIndex());
-        jsonFileStore.appendJsonLine(properties.getBotHistoryFile(), historyEntry);
-
-        return result;
+        ProcessResult.EmailDelivery delivery = new ProcessResult.EmailDelivery();
+        delivery.setActualExtractedEmail(actualExtractedEmail);
+        delivery.setTargetEmail(targetEmail);
+        delivery.setDraft(draft);
+        delivery.setEmailSent(emailSent);
+        delivery.setCooldownSkipped(cooldownSkipped);
+        delivery.setCooldownRemainingDays(cooldownStatus.remainingDays);
+        return delivery;
     }
 
     private ProcessResult processUrlWithoutEmail(
@@ -292,34 +323,57 @@ public class JobEmailerService {
         if (result.isLinkedinDmMode()) {
             return formatLinkedInDmSummary(result);
         }
-        String mode;
-        if (result.isEmailSent()) {
-            mode = "sent";
-        } else if (result.isCooldownSkipped()) {
-            mode = "skipped (cooldown active, " + result.getCooldownRemainingDays() + " day(s) left)";
-        } else {
-            mode = "drafted only";
+        StringBuilder summary = new StringBuilder();
+        summary.append("Processed LinkedIn post.\n")
+                .append("Extracted emails: ")
+                .append(String.join(", ", result.getExtractedPostEmails()))
+                .append("\n")
+                .append("Default/test email: ")
+                .append(result.getDefaultEmail())
+                .append("\n")
+                .append("Test mode: ")
+                .append(result.isTestMode())
+                .append("\n")
+                .append("Post source: ")
+                .append(result.getPost().getSource())
+                .append("\n\n")
+                .append("Deliveries:");
+
+        for (ProcessResult.EmailDelivery delivery : result.getEmailDeliveries()) {
+            summary.append("\n- ")
+                    .append(delivery.getActualExtractedEmail())
+                    .append(" -> ")
+                    .append(delivery.getTargetEmail())
+                    .append(": ")
+                    .append(formatDeliveryMode(delivery))
+                    .append("\n  Subject: ")
+                    .append(delivery.getDraft().getSubject())
+                    .append("\n  ")
+                    .append(formatGenerationStatus(delivery.getDraft()));
         }
 
-        String generationStatus;
-        if (result.getDraft().getGeminiModel() != null && !result.getDraft().getGeminiModel().isBlank()) {
-            generationStatus = "Email generated by Gemini using " + result.getDraft().getGeminiModel();
-            if (result.getDraft().getGeminiKeyIndex() != null) {
-                generationStatus += " (key " + result.getDraft().getGeminiKeyIndex() + ")";
+        return summary.toString();
+    }
+
+    private String formatDeliveryMode(ProcessResult.EmailDelivery delivery) {
+        if (delivery.isEmailSent()) {
+            return "sent";
+        }
+        if (delivery.isCooldownSkipped()) {
+            return "skipped (cooldown active, " + delivery.getCooldownRemainingDays() + " day(s) left)";
+        }
+        return "drafted only";
+    }
+
+    private String formatGenerationStatus(EmailDraft draft) {
+        if (draft.getGeminiModel() != null && !draft.getGeminiModel().isBlank()) {
+            String generationStatus = "Email generated by Gemini using " + draft.getGeminiModel();
+            if (draft.getGeminiKeyIndex() != null) {
+                generationStatus += " (key " + draft.getGeminiKeyIndex() + ")";
             }
-        } else {
-            generationStatus = "Email generated by fallback logic";
+            return generationStatus;
         }
-
-        return "Processed LinkedIn post.\n"
-                + "Extracted email: " + result.getActualExtractedEmail() + "\n"
-                + "Default/test email: " + result.getDefaultEmail() + "\n"
-                + "Recipient used: " + result.getTargetEmail() + "\n"
-                + "Test mode: " + result.isTestMode() + "\n"
-                + "Mode: " + mode + "\n"
-                + "Subject: " + result.getDraft().getSubject() + "\n"
-                + "Post source: " + result.getPost().getSource() + "\n"
-                + generationStatus;
+        return "Email generated by fallback logic";
     }
 
     private String formatLinkedInDmSummary(ProcessResult result) {

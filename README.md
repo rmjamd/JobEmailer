@@ -53,6 +53,11 @@ mvn spring-boot:run
 
 Open `http://localhost:8080/` and paste a LinkedIn post URL. The page sends the URL to the app through a WebSocket connection at `/chat`.
 
+## LinkedIn Browser Plugin
+The `linkedin-jobemailer-plugin/` folder contains a Chrome/Edge extension that injects the same chat workflow directly into LinkedIn pages.
+
+Start JobEmailer in custom UI mode, then load `linkedin-jobemailer-plugin/` as an unpacked extension from `chrome://extensions`. The chat box connects to `ws://localhost:8080/chat`.
+
 ## Tracking Files
 - `telegram_state.json`
 - `bot_history.jsonl`

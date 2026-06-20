@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "JobEmailer LinkedIn Chat",
+  "version": "1.0.0",
+  "description": "Adds a JobEmailer chat box to LinkedIn pages for processing LinkedIn post URLs.",
+  "permissions": [],
+  "host_permissions": [
+    "http://localhost:8080/*",
+    "ws://localhost:8080/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.linkedin.com/*",
+        "https://linkedin.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "css": [
+        "styles.css"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}
