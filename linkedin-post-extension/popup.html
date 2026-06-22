@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>LinkedIn Post Link</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="linkedin-post-popup-content">
+    <div class="linkedin-post-popup-header">
+      <h3>Post Link</h3>
+      <span class="linkedin-post-popup-close">&times;</span>
+    </div>
+    <div class="linkedin-post-popup-body">
+      <input type="text" id="post-link-input" readonly />
+      <button id="copy-link-btn">Copy Link</button>
+    </div>
+  </div>
+
+  <script>
+    // This script will be used if we need any additional functionality in the popup
+    document.addEventListener('DOMContentLoaded', function() {
+      const closeBtn = document.querySelector('.linkedin-post-popup-close');
+      if (closeBtn) {
+        closeBtn.addEventListener('click', () => {
+          window.close();
+        });
+      }
+
+      const copyBtn = document.getElementById('copy-link-btn');
+      const linkInput = document.getElementById('post-link-input');
+
+      if (copyBtn && linkInput) {
+        copyBtn.addEventListener('click', () => {
+          linkInput.select();
+          document.execCommand('copy');
+          copyBtn.textContent = 'Copied!';
+          setTimeout(() => {
+            copyBtn.textContent = 'Copy Link';
+          }, 2000);
+        });
+      }
+    });
+  </script>
+</body>
+</html>

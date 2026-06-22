@@ -27,7 +27,8 @@
         '    <textarea id="je-input" rows="3" placeholder="Paste a LinkedIn post URL"></textarea>',
         '    <button id="je-send" type="submit" disabled>Send</button>',
         "  </form>",
-        "</div>"
+        "</div>",
+        '<div class="je-minimized-icon" aria-label="Open JobEmailer chat"></div>'
     ].join("");
 
     document.documentElement.appendChild(root);
@@ -40,6 +41,7 @@
     const status = root.querySelector("#je-status");
     const dot = root.querySelector(".je-dot");
     const toggle = root.querySelector("#je-toggle");
+    const minimizedIcon = root.querySelector(".je-minimized-icon");
 
     function addMessage(kind, text) {
         const message = document.createElement("div");
@@ -78,6 +80,26 @@
         input.focus();
     }
 
+    function toggleMinimize() {
+        minimized = !minimized;
+        if (minimized) {
+            root.classList.add("minimized");
+        } else {
+            root.classList.remove("minimized");
+        }
+        toggle.textContent = minimized ? "+" : "-";
+        toggle.setAttribute(
+            "aria-label",
+            minimized ? "Open JobEmailer chat" : "Minimize JobEmailer chat"
+        );
+
+        // Update icon aria-label
+        minimizedIcon.setAttribute(
+            "aria-label",
+            minimized ? "Open JobEmailer chat" : "Minimize JobEmailer chat"
+        );
+    }
+
     form.addEventListener("submit", event => {
         event.preventDefault();
         sendText(input.value.trim());
@@ -90,15 +112,10 @@
         }
     });
 
-    toggle.addEventListener("click", () => {
-        minimized = !minimized;
-        body.hidden = minimized;
-        toggle.textContent = minimized ? "+" : "-";
-        toggle.setAttribute(
-                "aria-label",
-                minimized ? "Open JobEmailer chat" : "Minimize JobEmailer chat"
-        );
-    });
+    toggle.addEventListener("click", toggleMinimize);
+
+    // Add click handler for the minimized icon
+    minimizedIcon.addEventListener("click", toggleMinimize);
 
     addMessage("bot", "Paste a LinkedIn post URL here. I will send it to your local JobEmailer app.");
     connect();
