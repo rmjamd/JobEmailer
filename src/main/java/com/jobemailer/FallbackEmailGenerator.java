@@ -30,7 +30,7 @@ public final class FallbackEmailGenerator {
         EmailDraft draft = new EmailDraft();
         String recipientName = inferRecruiterNameFromPost(post);
         String requirementHighlights = buildRequirementHighlights(post);
-        String body = "Hi " + recipientName + ",\n\n"
+        String body = greetingFor(recipientName) + "\n\n"
                 + buildRelevanceSentence(post) + " "
                 + "I have " + properties.getYearsOfExperience()
                 + " years of experience building scalable backend systems using Java, Spring Boot, Kafka, Redis, and cloud-native infrastructure."
@@ -44,6 +44,18 @@ public final class FallbackEmailGenerator {
         draft.setBody(body);
         draft.setPostSummary(post.getTitle() != null && !post.getTitle().isEmpty() ? post.getTitle() : truncate(post.getContent(), 180));
         return draft;
+    }
+
+    /** Greeting used whenever the recruiter's own name could not be determined. */
+    static final String NO_NAME_GREETING = "Hello Team,";
+    static final String UNKNOWN_RECIPIENT_NAME = "there";
+
+    /** "Hi Priya," when a real name is known, otherwise the neutral team greeting. */
+    static String greetingFor(String recipientName) {
+        return recipientName == null || recipientName.isBlank()
+                || recipientName.equalsIgnoreCase(UNKNOWN_RECIPIENT_NAME)
+                ? NO_NAME_GREETING
+                : "Hi " + recipientName + ",";
     }
 
     public static String inferRecruiterNameFromPost(PostData post) {
@@ -65,7 +77,7 @@ public final class FallbackEmailGenerator {
                 ? "Application for Backend Engineer opportunity"
                 : "Application for Backend Engineer opportunities at " + company;
         String requirementHighlights = buildRequirementHighlights(post);
-        String body = "Hi " + recipientName + ",\n\n"
+        String body = greetingFor(recipientName) + "\n\n"
                 + buildRelevanceSentence(post) + " "
                 + "I have " + properties.getYearsOfExperience()
                 + " years of experience building scalable backend systems using Java, Spring Boot, Kafka, Redis, and cloud-native infrastructure."
@@ -75,8 +87,8 @@ public final class FallbackEmailGenerator {
                 + "Ramij Amed Sardar\n"
                 + "Phone: +91 6289730218\n"
                 + "Email: ramijnalpur@gmail.com\n"
-                + "LinkedIn: https://www.linkedin.com/in/ramij-amed-sardar-0112071b9/\n\n"
-                + "Post reference:\n" + post.getUrl();
+                + "LinkedIn: https://www.linkedin.com/in/ramij-amed-sardar-0112071b9/"
+                + (safe(post.getUrl()).isEmpty() ? "" : "\n\nPost reference:\n" + post.getUrl());
 
         draft.setRecipientName(recipientName);
         draft.setSubject(subject);

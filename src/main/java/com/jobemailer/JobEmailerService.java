@@ -14,11 +14,18 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 @Service
 public class JobEmailerService {
+    private static final String PROVIDER_TELEGRAM = "telegram";
+    private static final String PROVIDER_CUSTOM_UI = "custom-ui";
+    private static final List<String> JOB_POST_MARKERS = List.of(
+            "hiring", "role:", "role ", "position", "opening", "vacancy", "experience", "exp)", "yrs",
+            "years", "location", "ctc", "lpa", "notice period", "apply", "resume", "cv", "job",
+            "company name", "batch", "candidate", "salary", "recruit");
     private static final Pattern EMAIL_PATTERN = Pattern.compile(
             "(?<![A-Z0-9._%+@-])([A-Z0-9._%+-]+@(?:[A-Z0-9-]+\\.)+[A-Z]{2,})(?![A-Z0-9_%+@-])",
             Pattern.CASE_INSENSITIVE);
@@ -37,6 +44,7 @@ public class JobEmailerService {
     private final JsonFileStore jsonFileStore;
     private final ObjectMapper objectMapper;
     private final ResourcePathResolver resourcePathResolver;
+    private final ConcurrentHashMap<String, Object> sendLocks = new ConcurrentHashMap<>();
 
     public JobEmailerService(
             JobEmailerProperties properties,
@@ -68,16 +76,47 @@ public class JobEmailerService {
             return;
         }
 
-        if (isCustomUiMode()) {
-            System.out.println("[JobEmailer] Custom chat UI mode enabled. Open http://localhost:8080/");
-            return;
+        List<String> providers = enabledProviders();
+        boolean customUiEnabled = providers.contains(PROVIDER_CUSTOM_UI);
+        boolean telegramEnabled = providers.contains(PROVIDER_TELEGRAM);
+        if (!customUiEnabled && !telegramEnabled) {
+            throw new IllegalStateException("jobemailer.input-provider must list at least one of "
+                    + PROVIDER_TELEGRAM + " or " + PROVIDER_CUSTOM_UI
+                    + " (got: '" + properties.getInputProvider() + "')");
         }
 
-        requireRuntimeFiles();
-        if (properties.getTelegramBotToken() == null || properties.getTelegramBotToken().isBlank()) {
-            throw new IllegalStateException("jobemailer.telegram-bot-token is required for polling mode");
+        if (customUiEnabled) {
+            System.out.println("[JobEmailer] Custom chat UI enabled. Open http://localhost:8080/ (plugin socket: ws://localhost:8080/chat)");
         }
+        if (telegramEnabled) {
+            requireRuntimeFiles();
+            if (properties.getTelegramBotToken() == null || properties.getTelegramBotToken().isBlank()) {
+                throw new IllegalStateException("jobemailer.telegram-bot-token is required for polling mode");
+            }
+            startTelegramPolling();
+        }
+    }
 
+    /**
+     * Polling runs on its own thread so that enabling telegram alongside custom-ui does not block
+     * the startup runner (and with it the WebSocket chat used by the browser plugin).
+     */
+    private void startTelegramPolling() {
+        Thread poller = new Thread(() -> {
+            try {
+                pollTelegram();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                System.out.println("[JobEmailer] Telegram polling interrupted");
+            } catch (Exception e) {
+                System.err.println("[JobEmailer] Telegram polling stopped: " + e.getMessage());
+                e.printStackTrace(System.err);
+            }
+        }, "telegram-poller");
+        poller.start();
+    }
+
+    private void pollTelegram() throws Exception {
         long nextOffset = readLastUpdateId() + 1;
         System.out.println("[JobEmailer] Telegram polling started (offset=" + nextOffset + ")");
         long lastHeartbeatMs = 0;
@@ -130,17 +169,65 @@ public class JobEmailerService {
 
     private void handleChatMessage(String text, long replyChatId, ChatResponder responder) throws IOException, InterruptedException {
         String url = extractLinkedInUrl(text);
-        if (url.isEmpty()) {
-            responder.send("Send a LinkedIn post URL. I will scrape it, draft an email, and optionally send it.");
+        boolean pastedPost = url.isEmpty() && looksLikeJobPost(text);
+        if (url.isEmpty() && !pastedPost) {
+            responder.send("Send a LinkedIn post URL, or paste the job post text itself "
+                    + "(include the recruiter email and I will apply to it directly).");
             return;
         }
-        responder.send("Processing the LinkedIn post. This can take a few seconds.");
+        responder.send(pastedPost
+                ? "Processing the pasted job post. This can take a few seconds."
+                : "Processing the LinkedIn post. This can take a few seconds.");
         try {
-            ProcessResult result = processUrl(url, replyChatId);
+            ProcessResult result = pastedPost ? processPastedContent(text, replyChatId) : processUrl(url, replyChatId);
             responder.send(formatSummary(result));
         } catch (Exception e) {
             responder.send("Processing failed: " + e.getMessage());
         }
+    }
+
+    /**
+     * A message with no LinkedIn URL is treated as the post content when it carries a recruiter
+     * email, or reads like a job post — so pasted "Company / Role / send CV to ..." blocks work
+     * on both input providers without anything else being mistaken for a job.
+     */
+    private boolean looksLikeJobPost(String text) {
+        if (text == null || text.isBlank()) {
+            return false;
+        }
+        if (!extractEmails(text).isEmpty()) {
+            return true;
+        }
+        String lower = text.toLowerCase();
+        int markerHits = 0;
+        for (String marker : JOB_POST_MARKERS) {
+            if (lower.contains(marker)) {
+                markerHits++;
+            }
+        }
+        return markerHits >= 2 && text.length() >= 40;
+    }
+
+    private static PostData buildPostFromPastedText(String text) {
+        PostData post = new PostData();
+        post.setUrl("");
+        post.setAuthor("");
+        post.setTimestamp("");
+        post.setContent(text);
+        post.setReactions("");
+        post.setComments("");
+        post.setTitle(firstNonBlankLine(text));
+        post.setSource("pasted_text");
+        return post;
+    }
+
+    private static String firstNonBlankLine(String text) {
+        for (String line : text.split("\\R")) {
+            if (!line.isBlank()) {
+                return line.trim();
+            }
+        }
+        return "";
     }
 
     public ProcessResult processUrl(String url) throws Exception {
@@ -148,8 +235,17 @@ public class JobEmailerService {
     }
 
     public ProcessResult processUrl(String url, long replyChatId) throws Exception {
+        return processPost(linkedInExtractor.extract(url), replyChatId);
+    }
+
+    /** Treats a chat message that carries no LinkedIn URL as the post content itself. */
+    public ProcessResult processPastedContent(String text, long replyChatId) throws Exception {
+        return processPost(buildPostFromPastedText(text), replyChatId);
+    }
+
+    private ProcessResult processPost(PostData post, long replyChatId) throws Exception {
         String candidateContext = Files.readString(Path.of(properties.getCandidateContextFile()), StandardCharsets.UTF_8);
-        PostData post = linkedInExtractor.extract(url);
+        String url = post.getUrl() == null ? "" : post.getUrl();
         List<String> extractedEmails = extractEmails(post.getContent());
         if (extractedEmails.isEmpty()) {
             return processUrlWithoutEmail(url, post, candidateContext, extractedEmails, replyChatId);
@@ -190,6 +286,7 @@ public class JobEmailerService {
         historyEntry.put("email_sent", result.isEmailSent());
         historyEntry.put("cooldown_skipped", result.isCooldownSkipped());
         historyEntry.put("test_mode", result.isTestMode());
+        historyEntry.put("post_source", post.getSource());
         historyEntry.put("draft_subject", firstDelivery.getDraft().getSubject());
         historyEntry.put("gemini_model", firstDelivery.getDraft().getGeminiModel());
         historyEntry.put("gemini_key_index", firstDelivery.getDraft().getGeminiKeyIndex());
@@ -218,15 +315,21 @@ public class JobEmailerService {
         boolean emailSent = false;
         boolean cooldownSkipped = false;
         if (properties.isAutoSendEmail()) {
-            if (cooldownStatus.active) {
-                cooldownSkipped = true;
-            } else {
-                String resumeAttachmentPath = resourcePathResolver
-                        .materializeToPath(properties.getResumePath(), "Resume file")
-                        .toString();
-                emailSender.sendEmail(targetEmail, draft.getSubject(), draft.getBody(), resumeAttachmentPath);
-                recordSend(cooldownKey, actualExtractedEmail, targetEmail, url);
-                emailSent = true;
+            // Draft generation takes seconds, so the same recruiter can arrive on the other input
+            // provider meanwhile. Re-check and record under a per-recipient lock so one address is
+            // never mailed twice by telegram and the browser plugin at the same time.
+            synchronized (sendLockFor(cooldownKey)) {
+                cooldownStatus = cooldownStatus(cooldownKey);
+                if (cooldownStatus.active) {
+                    cooldownSkipped = true;
+                } else {
+                    String resumeAttachmentPath = resourcePathResolver
+                            .materializeToPath(properties.getResumePath(), "Resume file")
+                            .toString();
+                    emailSender.sendEmail(targetEmail, draft.getSubject(), draft.getBody(), resumeAttachmentPath);
+                    recordSend(cooldownKey, actualExtractedEmail, targetEmail, url);
+                    emailSent = true;
+                }
             }
         }
 
@@ -406,6 +509,10 @@ public class JobEmailerService {
                 + result.getDraft().getBody();
     }
 
+    private Object sendLockFor(String cooldownKey) {
+        return sendLocks.computeIfAbsent(cooldownKey, key -> new Object());
+    }
+
     private CooldownStatus cooldownStatus(String key) {
         Map<String, SentEmailRecord> history = jsonFileStore.readValue(
                 properties.getSentEmailHistoryFile(),
@@ -513,8 +620,32 @@ public class JobEmailerService {
     }
 
     private boolean isCustomUiMode() {
-        return "custom-ui".equalsIgnoreCase(properties.getInputProvider())
-                || "custom".equalsIgnoreCase(properties.getInputProvider());
+        return enabledProviders().contains(PROVIDER_CUSTOM_UI);
+    }
+
+    /**
+     * {@code jobemailer.input-provider} accepts one or more providers, e.g. {@code custom-ui,telegram},
+     * so the browser plugin and Telegram polling can serve the same running app.
+     */
+    private List<String> enabledProviders() {
+        List<String> providers = new ArrayList<>();
+        String raw = properties.getInputProvider();
+        if (raw == null) {
+            return providers;
+        }
+        for (String part : raw.split("[,;\\s]+")) {
+            String normalized = part.trim().toLowerCase();
+            if (normalized.isEmpty()) {
+                continue;
+            }
+            if (normalized.equals("custom")) {
+                normalized = PROVIDER_CUSTOM_UI;
+            }
+            if (!providers.contains(normalized)) {
+                providers.add(normalized);
+            }
+        }
+        return providers;
     }
 
     @FunctionalInterface

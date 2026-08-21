@@ -4,12 +4,14 @@ Spring Boot version of the Telegram -> LinkedIn -> Gemini -> Email workflow.
 
 ## Features
 - Polls Telegram for LinkedIn post URLs
+- Accepts pasted job-post text (no URL) on any input provider and applies to the email inside it
 - Extracts post content from public LinkedIn HTML
 - Extracts recruiter email from post content only
 - Generates email drafts with Gemini, with model rotation and API-key failover
 - Supports test mode vs actual sending
-- Tracks sent emails and skips re-sending within 7 days
-- Can use either Telegram polling or a local browser chat UI over WebSocket
+- Tracks sent emails and skips re-sending to the same recruiter within 7 days, even when the same
+  post arrives on both input providers at once
+- Can use Telegram polling, a local browser chat UI / plugin over WebSocket, or both at once
 
 ## Configure
 
@@ -30,8 +32,10 @@ Important settings:
 - `jobemailer.auto-send-email=true`
 - `jobemailer.test-mode=true` for safe testing
 - `jobemailer.test-mode=false` for actual sending
-- `jobemailer.input-provider=custom-ui` for the local chat UI
+- `jobemailer.input-provider=custom-ui` for the local chat UI / browser plugin
 - `jobemailer.input-provider=telegram` for Telegram polling
+- `jobemailer.input-provider=custom-ui,telegram` to run both at once (default) — Telegram polls on a
+  background thread while the WebSocket chat stays available to the plugin
 - `jobemailer.run-once-url=` to process one LinkedIn post and exit
 
 ## Run Once

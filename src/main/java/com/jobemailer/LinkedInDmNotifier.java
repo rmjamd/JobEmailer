@@ -64,7 +64,10 @@ public class LinkedInDmNotifier {
         StringBuilder message = new StringBuilder();
         message.append("📧 No email in post — draft for LinkedIn outreach\n\n");
         message.append("Author: ").append(author).append('\n');
-        message.append("URL: ").append(post.getUrl()).append("\n\n");
+        if (post.getUrl() != null && !post.getUrl().isBlank()) {
+            message.append("URL: ").append(post.getUrl()).append('\n');
+        }
+        message.append('\n');
         if (draft.getPostSummary() != null && !draft.getPostSummary().isBlank()) {
             message.append("Summary: ").append(draft.getPostSummary()).append("\n\n");
         }

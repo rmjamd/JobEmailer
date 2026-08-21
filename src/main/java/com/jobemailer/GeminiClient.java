@@ -14,9 +14,23 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Component
 public class GeminiClient {
+    /** A greeting word followed by a non-name stand-in, e.g. "Dear there," or "Hi [Recruiter]". */
+    // Longest alternatives first: regex alternation is ordered, so "sir" would otherwise win over
+    // "sir/madam" and leave the tail behind.
+    private static final Pattern GENERIC_GREETING = Pattern.compile(
+            "^\\s*(?:hi|hello|dear|greetings)\\s+(?:to whom it may concern|sir\\s*(?:/|or)\\s*madam"
+                    + "|talent acquisition team|talent acquisition|recruitment team|recruiting team|hiring team"
+                    + "|hiring manager|recruiter|there|sir|madam|ma'am|teams|team"
+                    + "|[\\[{<][^\\]}>]*[\\]}>])"
+                    // the stand-in must end the greeting, so real names like "Theresa" are left alone
+                    + "\\s*(?=[,:;!.]|$)",
+            Pattern.CASE_INSENSITIVE);
+
     private final JobEmailerProperties properties;
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient = HttpClient.newHttpClient();
@@ -109,11 +123,30 @@ public class GeminiClient {
         }
         JsonNode parsed = objectMapper.readTree(text);
         EmailDraft draft = new EmailDraft();
-        draft.setRecipientName(parsed.path("recipient_name").asText("there"));
+        draft.setRecipientName(parsed.path("recipient_name").asText(FallbackEmailGenerator.UNKNOWN_RECIPIENT_NAME));
         draft.setSubject(parsed.path("subject").asText(""));
-        draft.setBody(parsed.path("body").asText(""));
+        draft.setBody(normalizeGreeting(parsed.path("body").asText("")));
         draft.setPostSummary(parsed.path("post_summary").asText(""));
         return draft;
+    }
+
+    /**
+     * The model occasionally pairs a greeting word with a non-name ("Dear there,") or leaves a
+     * placeholder in. Rewrite those to the standard no-name greeting before anything is sent.
+     */
+    static String normalizeGreeting(String body) {
+        if (body == null || body.isBlank()) {
+            return body == null ? "" : body;
+        }
+        int lineEnd = body.indexOf('\n');
+        String firstLine = lineEnd < 0 ? body : body.substring(0, lineEnd);
+        String rest = lineEnd < 0 ? "" : body.substring(lineEnd);
+
+        Matcher matcher = GENERIC_GREETING.matcher(firstLine);
+        if (!matcher.find()) {
+            return body;
+        }
+        return FallbackEmailGenerator.NO_NAME_GREETING + firstLine.substring(matcher.end()).replaceFirst("^\\s*[,:]", "") + rest;
     }
 
     private String buildLinkedInDmPrompt(PostData post, String candidateContext) throws IOException {
@@ -135,7 +168,8 @@ public class GeminiClient {
                 + "Rules:\n"
                 + "- Write a warm, professional DM the candidate can copy-paste on LinkedIn.\n"
                 + "- Keep the body under 120 words.\n"
-                + "- Start with \"Hi {name},\" using the recruiter's first name when known.\n"
+                + "- Start with \"Hi {name},\" using the recruiter's first name when known; if it is unknown, "
+                + "the greeting must be exactly \"Hello Team,\" — never \"Dear there,\", \"Hi there,\", or a placeholder.\n"
                 + "- Do not include email-style subject lines in the body.\n"
                 + "- Do not include the LinkedIn post URL in the body (it will be sent separately).\n"
                 + "- Mention relevant backend/Java/microservices experience from the candidate context.\n"
@@ -171,9 +205,13 @@ public class GeminiClient {
                 + "- Mention the candidate's relevant backend/distributed systems experience.\n"
                 + "- Keep the body under 170 words and make it concise.\n"
                 + "- Do not invent unavailable facts.\n"
-                + "- If recruiter name is unknown, use \"there\".\n"
-                + "- In the email body, the post reference must contain only the LinkedIn URL.\n"
-                + "- Put the LinkedIn post reference at the very bottom of the email, after the signature.\n"
+                + "- Greet on the first line with \"Hi {recruiter first name},\" when the name is known.\n"
+                + "- If the recruiter's name is unknown, the greeting must be exactly \"Hello Team,\" — never "
+                + "\"Dear there,\", \"Hi there,\", \"Dear Sir/Madam,\", or a placeholder such as [Name].\n"
+                + (post.getUrl() == null || post.getUrl().isBlank()
+                        ? "- The job details were pasted as plain text and there is no post URL: do not add any post reference, link, or placeholder.\n"
+                        : "- In the email body, the post reference must contain only the LinkedIn URL.\n"
+                                + "- Put the LinkedIn post reference at the very bottom of the email, after the signature.\n")
                 + "- Never include hashtags anywhere in the subject, body, or post_summary.\n"
                 + "- Ignore LinkedIn hashtags when inferring the role, company, or location.\n"
                 + "- If company name is unknown, omit it instead of guessing.\n"
