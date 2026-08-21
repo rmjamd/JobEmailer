@@ -1,0 +1,58 @@
+src/main/java/com/jobemailer/FallbackEmailGenerator.java
+  s_ff325a539a0268::t_bcb8393d3b200b 49-60
+  s_ff325a539a0268::t_4f196823bb29bd 90-91
+  s_ff325a539a0268::t_a8b5359a00a3f7 33
+  s_ff325a539a0268::t_8acc2e9fa2bc32 80
+src/main/java/com/jobemailer/LinkedInDmNotifier.java
+  s_ff325a539a0268::t_92efb939268e08 67-70
+README.md
+  s_ff325a539a0268::t_0c6ed087765af6 35,37-38
+  s_ff325a539a0268::t_3431c115b99d58 12-13
+  s_ff325a539a0268::t_22c111f8181999 14
+  s_ff325a539a0268::t_eb21cef1597197 7
+src/main/java/com/jobemailer/JobEmailerService.java
+  s_ff325a539a0268::t_84aa5397a7e999 47
+  s_ff325a539a0268::t_01e0ba3a5931cc 23-24
+  s_ff325a539a0268::t_012cd0335a8b6c 17
+  s_ff325a539a0268::t_b38856e5c91002 289
+  s_ff325a539a0268::t_a01164ee110f53 318-332
+  s_ff325a539a0268::t_b699f672fb2861 172-175,178-180,182,189-230
+  s_ff325a539a0268::t_f2f0836e46bdee 79-85,88-96,98-117,119
+  s_ff325a539a0268::t_27fc82ad74e1fc 25-28
+  s_ff325a539a0268::t_5569fba3ac89e4 238-246,248
+  s_ff325a539a0268::t_2dc0ad92c94989 512-515
+  s_ff325a539a0268::t_3df4eaf5480aeb 231,623-648
+  s_ff325a539a0268::t_8be37f896397af 232
+src/main/java/com/jobemailer/GeminiClient.java
+  s_ff325a539a0268::t_cc4d843676b944 23-24,26-28
+  s_ff325a539a0268::t_81f7b173ffb827 29-31
+  s_ff325a539a0268::t_d9701457383d41 208
+  s_ff325a539a0268::t_954e2daf297baf 126,128
+  s_ff325a539a0268::t_bb656d6f46ff35 209-210
+  s_ff325a539a0268::t_1f24c9d1be758d 17-18,22,25,32-33
+  s_ff325a539a0268::t_94279be43df74f 171
+  s_ff325a539a0268::t_224aa7c87c6b06 172
+  s_ff325a539a0268::t_73e9ea04278f33 133-151
+  s_ff325a539a0268::t_03c56cd3a43e0c 211-214
+candidate_context.md
+  s_ff325a539a0268::t_d3f6101327b5cb 5,12-40,43,46-47,55
+  s_ff325a539a0268::t_ccd6c3026e9d16 54
+src/main/resources/application.properties
+  s_ff325a539a0268::t_9e831f201ae6c1 14-16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "822e22243e1f80e9f6c6b82d2567476dcc85ba0f",
+  "prompts": {},
+  "sessions": {
+    "s_ff325a539a0268": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9abf98d5-e2f4-4a2c-90dd-873d1acec495",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ramij.amed <ramij.amed@gupshup.io>"
+    }
+  }
+}
