@@ -1,0 +1,29 @@
+linkedin-jobemailer-plugin/content.js
+  s_08e51c3f1295af::t_2db48c9f7f6edf 4-5,13-14,24,45,50-53,63,72-76,80-88,141
+linkedin-jobemailer-plugin/manifest.json
+  s_08e51c3f1295af::t_de75dc3cf3ae94 8,24-33
+  s_08e51c3f1295af::t_d5140ef2eedb83 34
+linkedin-post-extension/manifest.json
+  s_08e51c3f1295af::t_5b565ef6e09d1b 10-11,17
+linkedin-post-extension/content.js
+  s_08e51c3f1295af::t_5b565ef6e09d1b 5-42,44,46-51,53-55,57-58,60-65,67-68,70-81,83-84,93,96-103,105,108,110-112,117-138,152-162,165,172,183,207-217,219-225,243
+src/main/java/com/jobemailer/LinkedInExtractor.java
+  s_08e51c3f1295af::t_fe674911a54e62 12,22-23,25-30,60-66
+  s_08e51c3f1295af::t_16c92001bb0a1f 67
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "f2dd4bc79a55e59ff64bb864c5bd8b0c4df08f6d",
+  "prompts": {},
+  "sessions": {
+    "s_08e51c3f1295af": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "be4c6a6d-7a22-41e2-8a06-f41bf7796595",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ramij.amed <ramij.amed@gupshup.io>"
+    }
+  }
+}
