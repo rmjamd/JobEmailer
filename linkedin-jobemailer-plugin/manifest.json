@@ -5,8 +5,7 @@
   "description": "Adds a JobEmailer chat box to LinkedIn pages for processing LinkedIn post URLs.",
   "permissions": [],
   "host_permissions": [
-    "http://localhost:8080/*",
-    "ws://localhost:8080/*"
+    "http://localhost:8080/*"
   ],
   "content_scripts": [
     {
@@ -21,6 +20,17 @@
         "styles.css"
       ],
       "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "emailer.png"
+      ],
+      "matches": [
+        "https://www.linkedin.com/*",
+        "https://linkedin.com/*"
+      ]
     }
   ]
 }

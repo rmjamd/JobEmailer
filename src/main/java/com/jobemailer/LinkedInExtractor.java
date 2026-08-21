@@ -9,6 +9,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -18,8 +19,15 @@ public class LinkedInExtractor {
     private static final Pattern OG_TITLE = Pattern.compile("<meta property=\"og:title\" content=\"(.*?)\"", Pattern.DOTALL);
     private static final Pattern COMMENT_COUNT = Pattern.compile("\"commentCount\":(\\d+)");
 
+    private static final Pattern AUTH_WALL = Pattern.compile("/(authwall|signup|login|uas/login|checkpoint)");
+
     private final ObjectMapper objectMapper;
-    private final HttpClient httpClient = HttpClient.newHttpClient();
+    // LinkedIn 307s post urls through a redirect chain, so following them is required to reach
+    // the public page at all.
+    private final HttpClient httpClient = HttpClient.newBuilder()
+            .followRedirects(HttpClient.Redirect.NORMAL)
+            .connectTimeout(Duration.ofSeconds(15))
+            .build();
 
     public LinkedInExtractor(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
@@ -48,6 +56,14 @@ public class LinkedInExtractor {
         HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
         if (response.statusCode() >= 300) {
             throw new IOException("LinkedIn fetch failed: HTTP " + response.statusCode());
+        }
+        // Anonymous requests for feed permalinks land on the sign-in wall with a 200, which would
+        // otherwise be parsed as an empty post.
+        URI landed = response.uri();
+        if (landed != null && AUTH_WALL.matcher(landed.getPath()).find()) {
+            throw new IOException("LinkedIn served its sign-in wall for this link. "
+                    + "Use the public post link (linkedin.com/posts/...) instead of the feed "
+                    + "permalink, or paste the post text straight into the chat.");
         }
         return response.body();
     }

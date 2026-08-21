@@ -1,6 +1,8 @@
 (function () {
     const ROOT_ID = "jobemailer-linkedin-chat-root";
     const WS_URL = "ws://localhost:8080/chat";
+    const MIN_RECONNECT_MS = 1500;
+    const MAX_RECONNECT_MS = 15000;
 
     if (document.getElementById(ROOT_ID)) {
         return;
@@ -8,6 +10,8 @@
 
     let socket = null;
     let reconnectTimer = null;
+    let reconnectDelay = MIN_RECONNECT_MS;
+    let offlineNoticeShown = false;
     let minimized = false;
 
     const root = document.createElement("section");
@@ -17,7 +21,7 @@
         '<div class="je-header">',
         '  <div>',
         '    <strong>JobEmailer</strong>',
-        '    <span id="je-status"><span class="je-dot"></span>Connecting</span>',
+        '    <span id="je-status"><span class="je-dot"></span><span id="je-status-text">Connecting</span></span>',
         "  </div>",
         '  <button id="je-toggle" type="button" aria-label="Minimize JobEmailer chat">-</button>',
         "</div>",
@@ -38,10 +42,14 @@
     const form = root.querySelector("#je-form");
     const input = root.querySelector("#je-input");
     const send = root.querySelector("#je-send");
-    const status = root.querySelector("#je-status");
+    const statusText = root.querySelector("#je-status-text");
     const dot = root.querySelector(".je-dot");
     const toggle = root.querySelector("#je-toggle");
     const minimizedIcon = root.querySelector(".je-minimized-icon");
+
+    // Relative urls in a content-script stylesheet resolve against the LinkedIn page, not the
+    // extension, so the icon has to be pointed at its real chrome-extension:// url from here.
+    minimizedIcon.style.backgroundImage = `url("${chrome.runtime.getURL("emailer.png")}")`;
 
     function addMessage(kind, text) {
         const message = document.createElement("div");
@@ -52,7 +60,7 @@
     }
 
     function setConnected(connected) {
-        status.lastChild.textContent = connected ? "Connected" : "Disconnected";
+        statusText.textContent = connected ? "Connected" : "Disconnected";
         dot.classList.toggle("online", connected);
         send.disabled = !connected;
     }
@@ -61,11 +69,23 @@
         clearTimeout(reconnectTimer);
         socket = new WebSocket(WS_URL);
 
-        socket.addEventListener("open", () => setConnected(true));
+        socket.addEventListener("open", () => {
+            reconnectDelay = MIN_RECONNECT_MS;
+            offlineNoticeShown = false;
+            setConnected(true);
+        });
         socket.addEventListener("message", event => addMessage("bot", event.data));
         socket.addEventListener("close", () => {
             setConnected(false);
-            reconnectTimer = setTimeout(connect, 2000);
+            // Say it once rather than on every retry, so a stopped app does not flood the box.
+            if (!offlineNoticeShown) {
+                offlineNoticeShown = true;
+                addMessage("bot", "Can't reach JobEmailer at " + WS_URL
+                    + ". Start the app (mvn spring-boot:run) — this box reconnects on its own.");
+            }
+            reconnectTimer = setTimeout(connect, reconnectDelay);
+            // Back off so a browser left open overnight is not retrying twice a second forever.
+            reconnectDelay = Math.min(Math.round(reconnectDelay * 1.6), MAX_RECONNECT_MS);
         });
         socket.addEventListener("error", () => setConnected(false));
     }
@@ -117,6 +137,5 @@
     // Add click handler for the minimized icon
     minimizedIcon.addEventListener("click", toggleMinimize);
 
-    addMessage("bot", "Paste a LinkedIn post URL here. I will send it to your local JobEmailer app.");
     connect();
 })();
