@@ -1,0 +1,23 @@
+src/main/java/com/jobemailer/LinkedInExtractor.java
+  s_08e51c3f1295af::t_8abf37806713ed 40-41,43-45,56,74,77-84
+  s_08e51c3f1295af::t_69baac9dd7f304 18-21,87,89-97
+  s_08e51c3f1295af::t_4fba575cf58d02 85-86
+src/main/java/com/jobemailer/JobEmailerService.java
+  s_08e51c3f1295af::t_13fad381954248 29-31,597-600,602-607
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "8df28ba5d4e1675a9416d8cc1f34659d37c9c426",
+  "prompts": {},
+  "sessions": {
+    "s_08e51c3f1295af": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "be4c6a6d-7a22-41e2-8a06-f41bf7796595",
+        "model": "claude-opus-5"
+      },
+      "human_author": "ramij.amed <ramij.amed@gupshup.io>"
+    }
+  }
+}
