@@ -26,6 +26,9 @@ public class JobEmailerService {
             "hiring", "role:", "role ", "position", "opening", "vacancy", "experience", "exp)", "yrs",
             "years", "location", "ctc", "lpa", "notice period", "apply", "resume", "cv", "job",
             "company name", "batch", "candidate", "salary", "recruit");
+    private static final Pattern LINKEDIN_URL_PATTERN = Pattern.compile(
+            "https?://(?:(?:[\\w-]+\\.)?linkedin\\.com|lnkd\\.in)/\\S+", Pattern.CASE_INSENSITIVE);
+
     private static final Pattern EMAIL_PATTERN = Pattern.compile(
             "(?<![A-Z0-9._%+@-])([A-Z0-9._%+-]+@(?:[A-Z0-9-]+\\.)+[A-Z]{2,})(?![A-Z0-9_%+@-])",
             Pattern.CASE_INSENSITIVE);
@@ -591,9 +594,17 @@ public class JobEmailerService {
         }
     }
 
+    /**
+     * Accepts lnkd.in as well as linkedin.com: the share sheet in the mobile app hands out short
+     * links, and those are what actually get pasted into the chat.
+     */
     private String extractLinkedInUrl(String text) {
-        Matcher matcher = Pattern.compile("https?://(?:www\\.)?linkedin\\.com/\\S+", Pattern.CASE_INSENSITIVE).matcher(text == null ? "" : text);
-        return matcher.find() ? matcher.group() : "";
+        Matcher matcher = LINKEDIN_URL_PATTERN.matcher(text == null ? "" : text);
+        if (!matcher.find()) {
+            return "";
+        }
+        // A url at the end of a sentence would otherwise swallow the punctuation after it.
+        return matcher.group().replaceAll("[.,;:!?)\\]}>\"']+$", "");
     }
 
     private long readLastUpdateId() {

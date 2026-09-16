@@ -15,7 +15,10 @@ import java.util.regex.Pattern;
 
 @Component
 public class LinkedInExtractor {
-    private static final Pattern ARTICLE_BODY = Pattern.compile("\"articleBody\"\\s*:\\s*\"([^\"]+)\"");
+    // Matches a full json string value, escaped quotes included, so a post containing a quote is
+    // not truncated at it.
+    private static final Pattern ARTICLE_BODY =
+            Pattern.compile("\"articleBody\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"");
     private static final Pattern OG_TITLE = Pattern.compile("<meta property=\"og:title\" content=\"(.*?)\"", Pattern.DOTALL);
     private static final Pattern COMMENT_COUNT = Pattern.compile("\"commentCount\":(\\d+)");
 
@@ -34,9 +37,12 @@ public class LinkedInExtractor {
     }
 
     public PostData extract(String url) throws IOException, InterruptedException {
-        String html = fetch(url);
+        Fetched fetched = fetch(url);
+        String html = fetched.html;
         PostData post = new PostData();
-        post.setUrl(url);
+        // Record where the link actually landed, so history keeps the real post url rather than
+        // a one-off lnkd.in short link.
+        post.setUrl(fetched.url);
         post.setAuthor(extractAuthor(html));
         post.setTitle(extractTitle(html));
         post.setComments(extractComments(html));
@@ -47,7 +53,7 @@ public class LinkedInExtractor {
         return post;
     }
 
-    private String fetch(String url) throws IOException, InterruptedException {
+    private Fetched fetch(String url) throws IOException, InterruptedException {
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(url))
                 .header("User-Agent", "Mozilla/5.0")
@@ -65,16 +71,31 @@ public class LinkedInExtractor {
                     + "Use the public post link (linkedin.com/posts/...) instead of the feed "
                     + "permalink, or paste the post text straight into the chat.");
         }
-        return response.body();
+        return new Fetched(response.body(), landed == null ? url : landed.toString());
     }
 
-    private String extractContent(String html) throws IOException {
-        Matcher matcher = ARTICLE_BODY.matcher(html);
-        if (matcher.find()) {
-            String escaped = matcher.group(1).replace("\\", "\\\\").replace("\"", "\\\"");
-            return objectMapper.readValue("\"" + escaped + "\"", String.class).trim();
+    private static final class Fetched {
+        private final String html;
+        private final String url;
+
+        private Fetched(String html, String url) {
+            this.html = html;
+            this.url = url;
         }
-        return "";
+    }
+
+    private String extractContent(String html) {
+        Matcher matcher = ARTICLE_BODY.matcher(html);
+        if (!matcher.find()) {
+            return "";
+        }
+        // The capture is already json-escaped. Escaping it again turned every \n in the post into
+        // a literal backslash-n, so the model received the whole post as one unbroken line.
+        try {
+            return objectMapper.readValue("\"" + matcher.group(1) + "\"", String.class).trim();
+        } catch (IOException e) {
+            return matcher.group(1).trim();
+        }
     }
 
     private String extractTitle(String html) {
