@@ -16,9 +16,12 @@ import java.util.regex.Pattern;
 @Component
 public class LinkedInExtractor {
     // Matches a full json string value, escaped quotes included, so a post containing a quote is
-    // not truncated at it.
+    // not truncated at it. The body is unrolled as [^"\\]*(?:\\.[^"\\]*)* rather than the
+    // equivalent (?:[^"\\]|\\.)*: java recurses once per iteration of a group loop, so the
+    // alternation form cost one stack frame per character and overflowed on posts past ~3k chars.
+    // Unrolled, the group loop only turns over once per escape sequence.
     private static final Pattern ARTICLE_BODY =
-            Pattern.compile("\"articleBody\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"");
+            Pattern.compile("\"articleBody\"\\s*:\\s*\"([^\"\\\\]*(?:\\\\.[^\"\\\\]*)*)\"");
     private static final Pattern OG_TITLE = Pattern.compile("<meta property=\"og:title\" content=\"(.*?)\"", Pattern.DOTALL);
     private static final Pattern COMMENT_COUNT = Pattern.compile("\"commentCount\":(\\d+)");
 

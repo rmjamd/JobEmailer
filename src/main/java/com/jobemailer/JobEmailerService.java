@@ -111,7 +111,9 @@ public class JobEmailerService {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 System.out.println("[JobEmailer] Telegram polling interrupted");
-            } catch (Exception e) {
+            } catch (Throwable e) {
+                // Last resort: log why polling died instead of leaving only a bare stack trace on
+                // stderr while the web server carries on as if nothing happened.
                 System.err.println("[JobEmailer] Telegram polling stopped: " + e.getMessage());
                 e.printStackTrace(System.err);
             }
@@ -150,7 +152,9 @@ public class JobEmailerService {
                     nextOffset = updateId + 1;
                     writeLastUpdateId(updateId);
                 }
-            } catch (Exception e) {
+            // StackOverflowError is caught alongside Exception because a single pathological post
+            // used to unwind straight out of the thread and stop polling silently until restart.
+            } catch (Exception | StackOverflowError e) {
                 consecutiveErrors++;
                 System.err.println("[JobEmailer] Polling error (#" + consecutiveErrors + " at " + Instant.now()
                         + "): " + e.getMessage());
